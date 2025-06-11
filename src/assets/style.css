@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@plugin "daisyui" {
+    themes: light --default, dark --prefersdark, emerald;
+}
+/* src/assets/style.css */
+@font-face {
+    font-family: 'Yekan';
+    /* relative path from this file into the fonts/ folder: */
+    src: url('./fonts/YekanBakh-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+}
+
+html, body {
+    direction: rtl;
+}
+
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Yekan', sans-serif;
+}
