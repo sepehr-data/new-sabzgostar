@@ -1,63 +1,124 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
-import bgImg from '@/assets/img/bg_login.png'
+import axios, { AxiosError } from 'axios'
+import jwt_decode from 'vue-jwt-decode'
+import bgImg from '@/assets/img/login_bg_final.png'
+import { saveToken } from '@/auth'
 
-// Vue Router
+// Router
 const router = useRouter()
 
-// State
-const step = ref<'phone' | 'otp'>('phone')
-const phoneNumber = ref('')
-const otpCode = ref('')
-const loading = ref(false)
-const errorMessage = ref('')
+/* ─────  Axios instance  ───── */
+const api = axios.create({
+  // در dev مقدار متغیّر را در .env قرار دهید:  VITE_API_BASE_URL=http://localhost:5000/api/v1
+  baseURL: 'http://194.180.11.84:5000/api/v1',
+  timeout: 10_000
+})
 
-// Send OTP to the provided phone number
+// Mode: "user" (OTP) or "admin" (username/password)
+const mode = ref<'user' | 'admin'>('user')
+
+// Common state
+const loading = ref(false)
+
+// ——— User (OTP) state ———
+const step = ref<'phone' | 'otp'>('phone')
+const phone = ref('')
+const otp = ref('')
+const userError = ref('')
+
+// ——— Admin state ———
+const username = ref('')
+const password = ref('')
+const adminError = ref('')
+
+
+interface JWTPayload { role?: 'user' | 'admin' }
+
+function getRoleFromToken(token: string): 'user' | 'admin' | null {
+  try {
+    // decode() returns `any`, so we just assert it’s our payload shape
+    const decoded = jwt_decode(token) as JWTPayload
+    return decoded.role ?? null
+  } catch {
+    return null
+  }
+}
+
+// On component mount, check for existing token & redirect
+onMounted(() => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    const role = getRoleFromToken(token)
+    if (role === 'user') {
+      router.replace({ name: 'Portal' })
+    } else if (role === 'admin') {
+      router.replace({ name: 'Admin' })
+    }
+  }
+})
+
+// Send OTP
 async function sendOtp() {
-  errorMessage.value = ''
-  if (!phoneNumber.value) {
-    errorMessage.value = 'لطفاً شماره تلفن را وارد کنید'
+  userError.value = ''
+  if (!phone.value) {
+    userError.value = 'لطفاً شماره تلفن را وارد کنید'
     return
   }
   loading.value = true
   try {
-    await axios.post('http://localhost:5000/api/otp/send', {
-      phone: phoneNumber.value
-    }, {
-      headers: { 'Content-Type': 'application/json' }
-    })
+    await api.post('/register-user', { phone: phone.value })
     step.value = 'otp'
   } catch (err: any) {
-    console.error(err)
-    errorMessage.value = err.response?.data?.message
-        || err.message
-        || 'خطا در ارسال پیامک'
+    userError.value = err.response?.data?.message || 'خطا در ارسال پیامک'
   } finally {
     loading.value = false
   }
 }
 
-// Verify the OTP code
+// Verify OTP
 async function verifyOtp() {
-  errorMessage.value = ''
-  if (!otpCode.value) {
-    errorMessage.value = 'لطفاً کد تایید را وارد کنید'
+  userError.value = ''
+  if (!otp.value) {
+    userError.value = 'لطفاً کد تأیید را وارد کنید'
     return
   }
   loading.value = true
   try {
-    const response = await axios.post('http://localhost:5000/api/otp/verify', {
-      phone: phoneNumber.value,
-      code: otpCode.value
-    }, {
-      headers: { 'Content-Type': 'application/json' }
+    const token = localStorage.getItem('token')
+    let response = await api.post('/verify-user', {
+      phone: phone.value,
+      verify: otp.value
     })
-    // On success, navigate to portal
+    axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`
+    saveToken(response.data.token)
     router.push({ name: 'Portal' })
   } catch (err: any) {
-    errorMessage.value = err.response?.data?.message || 'کد تایید اشتباه است'
+    userError.value = err.response?.data?.message || 'کد تأیید اشتباه است'
+  } finally {
+    loading.value = false
+  }
+}
+
+// Admin login
+async function loginAdmin() {
+  adminError.value = ''
+  if (!username.value || !password.value) {
+    adminError.value = 'نام کاربری و رمز عبور را وارد کنید'
+    return
+  }
+  loading.value = true
+  try {
+    let response = await api.post('/admin/login', {
+      username: username.value,
+      password: password.value
+    })
+    saveToken(response.data.token)
+    router.push({ name: 'Admin' })
+
+  } catch (err: any) {
+    adminError.value = err.response?.data?.message || 'خطا در ورود ادمین'
   } finally {
     loading.value = false
   }
@@ -67,57 +128,130 @@ async function verifyOtp() {
 <template>
   <div
       class="hero relative min-h-screen bg-cover bg-center"
-      :style="{ backgroundImage: `url(${bgImg})` }"
-  >
-    <!-- overlay for readability -->
-    <div class="absolute inset-0  bg-opacity-50"></div>
+      :style="{ backgroundImage: `url(${bgImg})` }">
 
-    <div class="relative w-full max-w-md px-4">
-      <div class="card bg-white bg-opacity-95 shadow-lg">
-        <div class="card-body">
-          <h2 class="card-title justify-center mb-4">ورود / ثبت نام</h2>
-          <div v-if="step === 'phone'">
-            <label class="label">
-              <span class="label-text">شماره تلفن</span>
-            </label>
-            <input
-                v-model="phoneNumber"
-                type="tel"
-                placeholder="+989XXXXXXXXX"
-                class="input input-bordered w-full mb-2"
-            />
-            <p v-if="errorMessage" class="text-sm text-red-500 mb-2">{{ errorMessage }}</p>
-            <button
-                @click="sendOtp"
-                :disabled="loading"
-                class="btn btn-primary w-full"
-            >
-              {{ loading ? 'در حال ارسال...' : 'ارسال کد تایید' }}
-            </button>
+
+    <div class="min-h-screen flex items-center justify-center bg-gray-80 p-4">
+      <div
+          class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden
+         flex flex-col h-96"
+      >
+        <!-- Tabs -->
+        <div class="flex bg-gray-50 p-1">
+          <button
+              @click="mode = 'user'; step='phone'; userError='';"
+              class="flex-1 py-2 text-center font-medium transition rounded-full"
+              :class="mode === 'user'
+              ? 'bg-[#40916c] text-white'
+              : 'text-gray-600 hover:bg-gray-200'"
+          >
+            کاربر
+          </button>
+          <button
+              @click="mode = 'admin';"
+              class="flex-1 py-2 text-center font-medium transition rounded-full"
+              :class="mode === 'admin'
+              ? 'bg-[#40916c] text-white'
+              : 'text-gray-600 hover:bg-gray-200'"
+          >
+            ادمین
+          </button>
+        </div>
+
+        <div class="p-8 flex-1 overflow-y-auto">
+          <!-- Title -->
+          <h2 class="text-center text-2xl font-semibold text-gray-800 mb-6">
+            <span v-if="mode==='user'">
+              {{ step==='phone' ? 'ورود / ثبت نام' : 'تأیید کد' }}
+            </span>
+            <span v-else>ورود ادمین</span>
+          </h2>
+
+          <!-- USER MODE -->
+          <div v-if="mode === 'user'">
+            <!-- Step 1: Phone -->
+            <div v-if="step === 'phone'">
+              <label class="block text-gray-700 mb-1">شماره تلفن</label>
+              <input
+                  v-model="phone"
+                  type="tel"
+                  placeholder="+989151001410"
+                  class="w-full mb-4 px-4 py-2 border border-gray-300 rounded-lg
+                       focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
+              />
+              <p v-if="userError" class="text-sm text-red-500 mb-2">{{ userError }}</p>
+              <button
+                  @click="sendOtp"
+                  :disabled="loading"
+                  class="w-full py-2 rounded-lg text-white font-medium transition"
+                  :class="loading
+                  ? 'bg-[#40916c] opacity-50 cursor-not-allowed'
+                  : 'bg-[#40916c] hover:bg-[#17422c]'"
+              >
+                {{ loading ? 'در حال ارسال...' : 'ارسال کد تأیید' }}
+              </button>
+            </div>
+
+            <!-- Step 2: OTP -->
+            <div v-else>
+              <label class="block text-gray-700 mb-1">کد تأیید</label>
+              <input
+                  v-model="otp"
+                  type="text"
+                  placeholder="کد ۵ رقمی"
+                  class="w-full mb-4 px-4 py-2 border border-gray-300 rounded-lg
+                       focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
+              />
+              <p v-if="userError" class="text-sm text-red-500 mb-2">{{ userError }}</p>
+              <button
+                  @click="verifyOtp"
+                  :disabled="loading"
+                  class="w-full py-2 rounded-lg text-white font-medium transition mb-2"
+                  :class="loading
+                  ? 'bg-[#40916c] opacity-50 cursor-not-allowed'
+                  : 'bg-[#40916c] hover:bg-[#17422c]'"
+              >
+                {{ loading ? 'در حال بررسی...' : 'تأیید کد' }}
+              </button>
+              <button
+                  @click.prevent="step='phone'; userError=''; otp='';"
+                  class="block mx-auto text-sm text-gray-500 hover:text-[#1b4332]"
+              >
+                تغییر شماره تلفن
+              </button>
+            </div>
           </div>
+
+          <!-- ADMIN MODE -->
           <div v-else>
-            <label class="label">
-              <span class="label-text">کد تایید</span>
-            </label>
+            <label class="block text-gray-700 mb-1">نام کاربری</label>
             <input
-                v-model="otpCode"
+                v-model="username"
                 type="text"
-                placeholder="کد ۵ رقمی"
-                class="input input-bordered w-full mb-2"
+                placeholder="نام کاربری ادمین"
+                class="w-full mb-4 px-4 py-2 border border-gray-300 rounded-lg
+                     focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
             />
-            <p v-if="errorMessage" class="text-sm text-red-500 mb-2">{{ errorMessage }}</p>
+
+            <label class="block text-gray-700 mb-1">رمز عبور</label>
+            <input
+                v-model="password"
+                type="password"
+                placeholder="رمز عبور"
+                class="w-full mb-4 px-4 py-2 border border-gray-300 rounded-lg
+                     focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
+            />
+
+            <p v-if="adminError" class="text-sm text-red-500 mb-2">{{ adminError }}</p>
             <button
-                @click="verifyOtp"
+                @click="loginAdmin"
                 :disabled="loading"
-                class="btn btn-secondary w-full"
+                class="w-full py-2 rounded-lg text-white font-medium transition"
+                :class="loading
+                ? 'bg-[#40916c] opacity-50 cursor-not-allowed'
+                : 'bg-[#40916c] hover:bg-[#17422c]'"
             >
-              {{ loading ? 'در حال بررسی...' : 'تایید کد' }}
-            </button>
-            <button
-                @click.prevent="step = 'phone'; errorMessage = ''; otpCode = ''"
-                class="btn btn-link mt-2"
-            >
-              تغییر شماره تلفن
+              {{ loading ? 'در حال ورود...' : 'ورود' }}
             </button>
           </div>
         </div>
@@ -127,13 +261,5 @@ async function verifyOtp() {
 </template>
 
 <style scoped>
-/* Customize button colors */
-.btn-primary {
-  --btn-primary-bg: #74c69d;
-  --btn-primary-color: white;
-}
-.btn-secondary {
-  --btn-secondary-bg: #38a169;
-  --btn-secondary-color: white;
-}
+/* All styling via Tailwind CSS utilities; no additional CSS needed */
 </style>

@@ -4,6 +4,7 @@ import bgImg from '@/assets/img/background_img.png'
 import contactsIco from '@/assets/img/contacts.svg'
 import archiveIco from '@/assets/img/archive.svg'
 import userIco from '@/assets/img/user.svg'
+
 </script>
 
 <template>

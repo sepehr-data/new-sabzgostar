@@ -10,7 +10,7 @@ interface Download {
 // لیست فایل‌های قابل دانلود
 const downloads: Download[] = [
   { name: 'فرم بیمه.pdf', description: 'فرم بیمه تامین اجتماعی', url: '/docs/plan.pdf' },
-  { name: 'فرم بانک.pdf', description: 'فرم بانک مسکن', url: '/docs/contract.pdf' }
+  { name: 'bank-form.pdf', description: 'فرم بانک مسکن', url: '/docs/contract.pdf' }
 ]
 
 // آیکن فایل بر اساس فرمت

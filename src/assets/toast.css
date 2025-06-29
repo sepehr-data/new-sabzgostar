@@ -1,0 +1,18 @@
+/* make sure you’re using Vue-Toastification’s v2 class names */
+.Vue-Toastification__toast,
+.Vue-Toastification__content {
+    font-family: 'Yekan', sans-serif !important;
+}
+
+/* (you can leave your positioning & sizing rules here too) */
+.Vue-Toastification__toast-container--top-right {
+    top: 1rem !important;
+    right: 1rem !important;
+    width: auto !important;
+}
+.Vue-Toastification__toast {
+    width: auto !important;
+    max-width: 320px !important;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.875rem !important;
+}
